@@ -10,7 +10,6 @@ app.use(bodyParser.json());
 app.use(cors());
 app.use(express.json());
 
-
 // Auth0 middleware configuration
 const checkJwt = auth({
   audience: 'https://dev-fcvminbx3u0yygnt.us.auth0.com/api/v2/',
@@ -39,14 +38,7 @@ app.get("/", (req, res) => {
   res.send("Welcome to the Zest Event API");
 });
 
-
-
-
-
-
-
-
-// Update your profile status endpoint
+// Profile Status Endpoints
 app.get('/api/profile/status', checkJwt, (req, res) => {
   const userId = req.auth.payload.sub;
   
@@ -59,7 +51,6 @@ app.get('/api/profile/status', checkJwt, (req, res) => {
         return res.status(500).json({ error: 'Internal server error' });
       }
       
-      // If user doesn't exist, create a new record
       if (results.length === 0) {
         db.query(
           'INSERT INTO users (id, is_profile_completed) VALUES (?, false)',
@@ -95,7 +86,6 @@ app.post('/api/profile', checkJwt, (req, res) => {
     profilePictureUrl
   } = req.body;
 
-  // First check if username is taken
   db.query(
     'SELECT id FROM users WHERE username = ? AND id != ?',
     [username, userId],
@@ -108,7 +98,6 @@ app.post('/api/profile', checkJwt, (req, res) => {
         return res.status(400).json({ error: 'Username already taken' });
       }
 
-      // Insert or update user profile
       const query = `
         INSERT INTO users (
           id, email, name, username, phone_number, college_name, 
@@ -169,15 +158,7 @@ app.get('/api/profile', checkJwt, (req, res) => {
   );
 });
 
-
-
-
-
-
-
-
-
-// Get all events
+// Event Endpoints
 app.get('/api/events', (req, res) => {
   const query = `
     SELECT 
@@ -192,6 +173,7 @@ app.get('/api/events', (req, res) => {
       about_event,
       created_at
     FROM events
+    WHERE event_type = 'event'
     ORDER BY event_date_time ASC
   `;
   
@@ -203,17 +185,24 @@ app.get('/api/events', (req, res) => {
   });
 });
 
-// Get events by type (workshop or event)
-app.get('/api/events/:type', (req, res) => {
-  const eventType = req.params.type;
+// Workshop Endpoints
+app.get('/api/workshops', (req, res) => {
   const query = `
-    SELECT *
-    FROM events
-    WHERE event_type = ?
+    SELECT 
+      id,
+      event_image,
+      event_title,
+      hosting_club,
+      event_date_time,
+      event_venue,
+      event_registration_link,
+      about_event,
+      created_at
+    FROM workshops
     ORDER BY event_date_time ASC
   `;
   
-  db.query(query, [eventType], (err, results) => {
+  db.query(query, (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
@@ -221,8 +210,7 @@ app.get('/api/events/:type', (req, res) => {
   });
 });
 
-
-// Add a new event
+// Add event/workshop
 app.post("/api/add-event", (req, res) => {
   const {
     event_type,
@@ -235,7 +223,6 @@ app.post("/api/add-event", (req, res) => {
     about_event,
   } = req.body;
 
-  // Validate inputs
   if (
     !event_type ||
     !event_image ||
@@ -249,46 +236,70 @@ app.post("/api/add-event", (req, res) => {
     return res.status(400).json({ message: "All fields are required" });
   }
 
-  const sql = `
-    INSERT INTO events (
-      event_type, 
-      event_image, 
-      event_title, 
-      hosting_club, 
-      event_date_time, 
-      event_venue, 
-      event_registration_link, 
-      about_event
-    ) 
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `;
-  const values = [
-    event_type,
-    event_image,
-    event_title,
-    hosting_club,
-    event_date_time,
-    event_venue,
-    event_registration_link,
-    about_event,
-  ];
+  const table = event_type === 'workshop' ? 'workshops' : 'events';
+  let sql, values;
+
+  if (event_type === 'workshop') {
+    sql = `
+      INSERT INTO workshops (
+        event_image, 
+        event_title, 
+        hosting_club, 
+        event_date_time, 
+        event_venue, 
+        event_registration_link, 
+        about_event
+      ) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+    values = [
+      event_image,
+      event_title,
+      hosting_club,
+      event_date_time,
+      event_venue,
+      event_registration_link,
+      about_event,
+    ];
+  } else {
+    sql = `
+      INSERT INTO events (
+        event_type,
+        event_image, 
+        event_title, 
+        hosting_club, 
+        event_date_time, 
+        event_venue, 
+        event_registration_link, 
+        about_event
+      ) 
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+    values = [
+      event_type,
+      event_image,
+      event_title,
+      hosting_club,
+      event_date_time,
+      event_venue,
+      event_registration_link,
+      about_event,
+    ];
+  }
 
   db.query(sql, values, (err, result) => {
     if (err) {
-        res.status(500).json({ message: "Failed to add event", error: err.message });
+      res.status(500).json({ message: "Failed to add event", error: err.message });
     } else {
-        res.status(201).json({ 
-            message: "Event added successfully", 
-            eventId: result.insertId 
-        });
+      res.status(201).json({ 
+        message: `${event_type === 'workshop' ? 'Workshop' : 'Event'} added successfully`, 
+        id: result.insertId 
+      });
     }
+  });
 });
-});
 
-
-
-
-// Start the server
+// Start server
 const PORT = 5000;
 app.listen(PORT, () => {
   console.log(`Server running at http://localhost:${PORT}`);
